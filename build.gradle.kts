@@ -14,12 +14,12 @@ repositories {
 }
 
 dependencies {
-    compileOnly(kotlin("stdlib-jdk8"))
-    implementation("org.spongepowered:spongeapi:7.4.0")
-    kapt("org.spongepowered:spongeapi:7.4.0")
+    implementation(kotlin("stdlib-jdk8"))
+
+    val sponge = create("org.spongepowered:spongeapi:7.4.0")
+    implementation(sponge)
+    kapt(sponge)
 }
-
-
 
 tasks {
   compileKotlin {

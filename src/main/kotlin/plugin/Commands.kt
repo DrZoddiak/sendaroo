@@ -1,6 +1,7 @@
 package plugin
 
 import org.spongepowered.api.command.CommandResult
+import org.spongepowered.api.command.args.CommandElement
 import org.spongepowered.api.command.args.GenericArguments
 import org.spongepowered.api.command.spec.CommandSpec
 import org.spongepowered.api.data.type.HandTypes
@@ -8,6 +9,7 @@ import org.spongepowered.api.entity.living.player.Player
 import org.spongepowered.api.item.ItemTypes
 import org.spongepowered.api.item.inventory.ItemStack
 import org.spongepowered.api.item.inventory.transaction.InventoryTransactionResult
+import org.spongepowered.api.text.LiteralText
 import org.spongepowered.api.text.Text
 import org.spongepowered.api.text.format.TextColors
 import java.util.*
@@ -28,9 +30,12 @@ class Commands {
             .build()
     }
 
+    private val argName: LiteralText = Text.of("name")
+    private val nameArg: CommandElement = GenericArguments.onlyOne(GenericArguments.player(argName))
+
     val spec: CommandSpec = CommandSpec.builder()
         .description(Text.of("Sends an item to another user!"))
-        .arguments(GenericArguments.onlyOne(GenericArguments.player(Text.of("name"))))
+        .arguments(nameArg)
         .executor { src, args ->
             // Ensure sender is a player
             if (src !is Player) {
@@ -43,31 +48,31 @@ class Commands {
                 src.sendMessage(err("Who do you want to send it to?"))
                 return@executor CommandResult.empty()
             }
-            val name = args.getOne<Player>("name").getOrNull()
+            val target = args.getOne<Player>("name").getOrNull()
 
-            if (src == name) {
+            if (target == null) {
+                src.sendMessage(err("You must use a valid player name!"))
+                return@executor CommandResult.empty()
+            }
+            // Prevent from sending items to self
+            if (src == target) {
                 src.sendMessage(err("You cannot send items to yourself!"))
                 return@executor CommandResult.empty()
             }
 
             // Check players item in their hand
-            val item = src.getItemInHand(HandTypes.MAIN_HAND).getOrNull()
+            val item = src.getItemInHand(HandTypes.MAIN_HAND).getOrNull()?.createSnapshot()
             // Player has no item in their hand
             if (item == null || item == ItemStack.empty() || item == ItemTypes.AIR) {
                 src.sendMessage(err("You must have an item in your hand to send something!"))
                 return@executor CommandResult.empty()
             }
 
-            // Target player from name
-            if (name == null) {
-                src.sendMessage(err("You must use a valid player name!"))
-                return@executor CommandResult.empty()
-            }
             // Transaction result
-            val result = name.inventory.set(item)
+            val result = target.inventory.offer(item.createStack())
 
-            // Potentially something else could've gone wrong but this is lazy
             if (result.type != InventoryTransactionResult.Type.SUCCESS) {
+                // Potentially something else could've gone wrong but this is lazy
                 src.sendMessage(err("Target players inventory is too full!"))
                 return@executor CommandResult.empty()
             }
@@ -78,12 +83,12 @@ class Commands {
             val itemName = item.type.name
             val itemQuantity = item.quantity
 
-            val sentItem: Text = succ("You have sent x$itemQuantity of $itemName to $name")
+            val sentItem: Text = succ("You have sent x$itemQuantity of $itemName to ${target.name}")
             val receivedItem: Text = succ("You have received x$itemQuantity of $itemName from ${src.name}")
 
             // Notify players of their items
             src.sendMessage(sentItem)
-            name.sendMessage(receivedItem)
+            target.sendMessage(receivedItem)
 
             CommandResult.success()
         }.build()
