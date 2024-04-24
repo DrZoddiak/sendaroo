@@ -120,7 +120,6 @@ class Commands(private val logger: Logger, private val config: SendarooConfig) {
     }
 }
 
-
 fun ItemStackSnapshot.minus(amount: Int): ItemStack {
     val stack = this.copy().createStack()
     stack.quantity -= amount
@@ -134,9 +133,5 @@ fun ItemStackSnapshot.eq(amount: Int): ItemStack {
 }
 
 fun <T> Optional<T?>.getOrNull(): T? {
-    return try {
-        orElseGet(null)
-    } catch (e: NullPointerException) {
-        null
-    }
+    return orElse(null)
 }
