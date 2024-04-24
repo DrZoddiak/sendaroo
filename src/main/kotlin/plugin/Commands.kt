@@ -1,5 +1,6 @@
 package plugin
 
+import org.slf4j.Logger
 import org.spongepowered.api.command.CommandResult
 import org.spongepowered.api.command.args.CommandElement
 import org.spongepowered.api.command.args.GenericArguments
@@ -7,14 +8,13 @@ import org.spongepowered.api.command.spec.CommandSpec
 import org.spongepowered.api.data.type.HandTypes
 import org.spongepowered.api.entity.living.player.Player
 import org.spongepowered.api.item.ItemTypes
-import org.spongepowered.api.item.inventory.ItemStack
 import org.spongepowered.api.item.inventory.transaction.InventoryTransactionResult
 import org.spongepowered.api.text.LiteralText
 import org.spongepowered.api.text.Text
 import org.spongepowered.api.text.format.TextColors
 import java.util.*
 
-class Commands {
+class Commands(private val logger: Logger, config: SendarooConfig) {
 
     private fun err(msg: String): Text {
         return Text.builder()
@@ -57,63 +57,57 @@ class Commands {
                 src.sendMessage(err("You must use a valid player name!"))
                 return@executor CommandResult.empty()
             }
-            // Prevent from sending items to self
-            if (src == target) {
-                src.sendMessage(err("You cannot send items to yourself!"))
-                return@executor CommandResult.empty()
+
+            if (!config.debug) {
+                // Prevent from sending items to self
+                if (src == target) {
+                    src.sendMessage(err("You cannot send items to yourself!"))
+                    return@executor CommandResult.empty()
+                }
             }
 
             // Check players item in their hand
             val item = src.getItemInHand(HandTypes.MAIN_HAND).getOrNull()?.createSnapshot()
             // Player has no item in their hand
-            if (item == null || item == ItemStack.empty() || item == ItemTypes.AIR) {
+            if (item == null || item.isEmpty || item == ItemTypes.AIR) {
                 src.sendMessage(err("You must have an item in your hand to send something!"))
                 return@executor CommandResult.empty()
             }
 
-            if (!args.hasAny(argQuantity)) {
-                // Transaction result
-                val stack = item.createStack()
-                val result = target.inventory.offer(stack)
+            val amt = args.getOne<Int>(argQuantity).getOrNull() ?: item.quantity
 
-                if (result.type != InventoryTransactionResult.Type.SUCCESS) {
-                    // Potentially something else could've gone wrong but this is lazy
-                    src.sendMessage(err("Target players inventory is too full!"))
-                    return@executor CommandResult.empty()
-                }
+            if (amt < 1) {
+                src.sendMessage(err("You must send a positive amount of items!"))
+                return@executor CommandResult.empty()
+            }
 
-                // Remove itemstack from Originating player
-                src.setItemInHand(HandTypes.MAIN_HAND, null)
-                notifyPlayers(src, target, item.type.name, item.quantity)
-            } else {
-                val amt = args.getOne<Int>(argQuantity).get()
+            when {
+                item.quantity == amt || item.quantity > amt -> {
+                    val stack = item.copy().createStack()
+                    stack.quantity = amt
 
-                if (amt < 1) {
-                    src.sendMessage(err("You must send a positive amount of items!"))
-                    return@executor CommandResult.empty()
-                }
+                    val result = target.inventory.offer(stack)
 
-                val currentAmt = item.quantity
-
-                when {
-                    currentAmt == amt || currentAmt > amt -> {
-                        val stack = item.copy().createStack()
-                        stack.quantity = amt
-                        target.inventory.offer(stack)
-
-                        val ustack = item.copy().createStack()
-                        ustack.quantity -= amt
-
-                        src.setItemInHand(HandTypes.MAIN_HAND, ustack)
-                        notifyPlayers(src, target, item.type.name, amt)
-                    }
-                    else -> {
-                        src.sendMessage(Text.of("Not enough items! Try again with the correct amount!"))
+                    if (result.type != InventoryTransactionResult.Type.SUCCESS) {
+                        // Potentially something else could've gone wrong but this is lazy
+                        src.sendMessage(err("Target players inventory is too full!"))
                         return@executor CommandResult.empty()
                     }
 
+                    val ustack = item.copy().createStack()
+                    ustack.quantity -= amt
+
+                    src.setItemInHand(HandTypes.MAIN_HAND, ustack)
+                    notifyPlayers(src, target, item.type.name, amt)
                 }
+
+                else -> {
+                    src.sendMessage(err("Not enough items! Try again with the correct amount!"))
+                    return@executor CommandResult.empty()
+                }
+
             }
+
 
             CommandResult.success()
         }.build()
@@ -127,5 +121,9 @@ class Commands {
 }
 
 fun <T> Optional<T?>.getOrNull(): T? {
-    return orElseGet(null)
+    return try {
+        orElseGet(null)
+    } catch (e: NullPointerException) {
+        null
+    }
 }
