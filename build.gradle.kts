@@ -1,10 +1,10 @@
 plugins {
     kotlin("jvm") version "1.3.40"
-    id("com.github.johnrengelman.shadow") version "7.1.2"
+    //id("com.github.johnrengelman.shadow") version "7.1.2"
 }
 
 group = "me.zodd"
-version = "1.1-SNAPSHOT"
+version = "1.3-SNAPSHOT"
 
 repositories {
     mavenCentral()
@@ -19,9 +19,9 @@ dependencies {
 }
 
 tasks {
-    shadowJar {
-        configurations = listOf(project.configurations.shadow.get())
-    }
+//    shadowJar {
+//        configurations = listOf(project.configurations.shadow.get())
+//    }
     compileKotlin {
         kotlinOptions.jvmTarget = "1.8"
         targetCompatibility = "1.8"

@@ -18,7 +18,7 @@ import org.spongepowered.api.plugin.PluginContainer
 @Plugin(
     id = "sendaroo",
     name = "sendaroo",
-    version = "1.0-SNAPSHOT",
+    version = "1.3-SNAPSHOT",
     description = "Allows users to send items to other users!",
     dependencies = [Dependency(id = "spotlin", version = "0.2.0", optional = false)]
 )
