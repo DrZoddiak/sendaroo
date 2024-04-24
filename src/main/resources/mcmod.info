@@ -1,0 +1,15 @@
+[
+  {
+    "modid": "sendaroo",
+    "name": "sendaroo",
+    "version": "1.0-SNAPSHOT",
+    "description": "Allows users to send items to other users!",
+    "dependencies": [
+      "spongeapi@7.4.0"
+    ],
+    "requiredMods": [
+      "spongeapi@7.4.0",
+      "spotlin@0.2.0"
+    ]
+  }
+]
