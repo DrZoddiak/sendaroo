@@ -2,6 +2,7 @@ package plugin
 
 import org.slf4j.Logger
 import org.spongepowered.api.command.CommandResult
+import org.spongepowered.api.command.args.CommandContext
 import org.spongepowered.api.command.args.CommandElement
 import org.spongepowered.api.command.args.GenericArguments
 import org.spongepowered.api.command.spec.CommandSpec
@@ -38,7 +39,7 @@ class Commands(private val logger: Logger, private val config: SendarooConfig) {
         GenericArguments.optional(GenericArguments.onlyOne(GenericArguments.integer(argQuantity)))
     private val nameArg: CommandElement = GenericArguments.onlyOne(GenericArguments.player(argName))
 
-    val spec: CommandSpec = CommandSpec.builder()
+    val send: CommandSpec = CommandSpec.builder()
         .description(Text.of("Sends an item to another user!"))
         .arguments(nameArg, quantityArg)
         .executor { src, args ->
@@ -60,7 +61,7 @@ class Commands(private val logger: Logger, private val config: SendarooConfig) {
                 return@executor CommandResult.empty()
             }
 
-            if (!config.debug) {
+            if (!config.debug || !src.hasPermission("sendaroo.send.self")) {
                 // Prevent from sending items to self
                 if (src == target) {
                     src.sendMessage(err("You cannot send items to yourself!"))
@@ -69,15 +70,17 @@ class Commands(private val logger: Logger, private val config: SendarooConfig) {
             }
 
             // Check players item in their hand
-            val item = src.getItemInHand(HandTypes.MAIN_HAND).getOrNull()?.createSnapshot()
+            val item = src.mainHand()
 
             // Player has no item in their hand
-            if (item == null || item.isEmpty || item == ItemTypes.AIR) {
+            if (item.isNothing()) {
                 src.sendMessage(err("You must have an item in your hand to send something!"))
                 return@executor CommandResult.empty()
             }
+            // #isNothing is a null check
+            item!!
 
-            val amt = args.getOne<Int>(argQuantity).getOrNull() ?: item.quantity
+            val amt = argQuantity.getOneOrDefault(args) { item.quantity }
 
             if (amt < 1) {
                 src.sendMessage(err("You must send a positive amount of items!"))
@@ -87,16 +90,14 @@ class Commands(private val logger: Logger, private val config: SendarooConfig) {
             logTransaction(src, target, item, amt)
 
             when {
-                item.quantity == amt || item.quantity > amt -> {
-                    val result = target.inventory.offer(item.eq(amt))
-
-                    if (result.type != InventoryTransactionResult.Type.SUCCESS) {
+                item.quantity >= amt -> {
+                    target.inventory.offer(item.eq(amt)).isSuccessful {
+                        src.setItemInHand(HandTypes.MAIN_HAND, item.minus(amt))
+                        notifyPlayers(src, target, item.type.name, amt)
+                    }.orElse {
                         src.sendMessage(err("Target players inventory is too full!"))
-                        return@executor CommandResult.empty()
+                        CommandResult.empty()
                     }
-
-                    src.setItemInHand(HandTypes.MAIN_HAND, item.minus(amt))
-                    notifyPlayers(src, target, item.type.name, amt)
                 }
 
                 else -> {
@@ -106,6 +107,32 @@ class Commands(private val logger: Logger, private val config: SendarooConfig) {
             }
             CommandResult.success()
         }.build()
+
+    private fun <T> LiteralText.getOneOrDefault(args: CommandContext, default: () -> T): T {
+        return args.getOne<T>(this).getOrNull() ?: default()
+    }
+
+    private fun Boolean.orElse(action: () -> CommandResult) {
+        if (!this) {
+            action()
+        }
+    }
+
+    private fun InventoryTransactionResult.isSuccessful(action: () -> Unit): Boolean {
+        return when (this.type) {
+            InventoryTransactionResult.Type.SUCCESS -> {
+                action()
+                true
+            }
+            else -> {
+                false
+            }
+        }
+    }
+
+    private fun Player.mainHand() = this.getItemInHand(HandTypes.MAIN_HAND).getOrNull()?.createSnapshot()
+
+    private fun ItemStackSnapshot?.isNothing() = (this == null || this.isEmpty || this.type == ItemTypes.AIR)
 
     private fun notifyPlayers(p1: Player, p2: Player, name: String, sent: Int) {
         val sentItem: Text = succ("You have sent x$sent of $name to ${p1.name}")
@@ -118,20 +145,21 @@ class Commands(private val logger: Logger, private val config: SendarooConfig) {
         if (!config.transactionLogging) return
         logger.info("${src.name} --[${item.type.name}]x$amount-> ${target.name}")
     }
+
+    private fun ItemStackSnapshot.minus(amount: Int): ItemStack {
+        val stack = this.copy().createStack()
+        stack.quantity -= amount
+        return stack
+    }
+
+    private fun ItemStackSnapshot.eq(amount: Int): ItemStack {
+        val stack = this.copy().createStack()
+        stack.quantity = amount
+        return stack
+    }
+
+    private fun <T> Optional<T?>.getOrNull(): T? {
+        return orElse(null)
+    }
 }
 
-fun ItemStackSnapshot.minus(amount: Int): ItemStack {
-    val stack = this.copy().createStack()
-    stack.quantity -= amount
-    return stack
-}
-
-fun ItemStackSnapshot.eq(amount: Int): ItemStack {
-    val stack = this.copy().createStack()
-    stack.quantity = amount
-    return stack
-}
-
-fun <T> Optional<T?>.getOrNull(): T? {
-    return orElse(null)
-}

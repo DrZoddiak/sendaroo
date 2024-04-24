@@ -24,11 +24,5 @@ tasks {
 //    }
     compileKotlin {
         kotlinOptions.jvmTarget = "1.8"
-        targetCompatibility = "1.8"
-        sourceCompatibility = "1.8"
-    }
-    compileJava {
-        targetCompatibility = "1.8"
-        sourceCompatibility = "1.8"
     }
 }

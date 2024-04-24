@@ -3,8 +3,6 @@ package plugin
 import com.google.inject.Inject
 import ninja.leaping.configurate.commented.CommentedConfigurationNode
 import ninja.leaping.configurate.loader.ConfigurationLoader
-import ninja.leaping.configurate.objectmapping.Setting
-import ninja.leaping.configurate.objectmapping.serialize.ConfigSerializable
 import org.slf4j.Logger
 import org.spongepowered.api.Sponge
 import org.spongepowered.api.config.DefaultConfig
@@ -28,7 +26,6 @@ class Sendaroo @Inject constructor(
     @DefaultConfig(sharedRoot = false)
     private val loader: ConfigurationLoader<CommentedConfigurationNode>
 ) {
-
     private lateinit var config: SendarooConfig
 
     @Listener
@@ -42,15 +39,6 @@ class Sendaroo @Inject constructor(
     @Listener
     fun onServerInit(event: GamePreInitializationEvent) {
         logger.info("Sendaroo loading commands!")
-        Sponge.getCommandManager().register(this, Commands(logger, config).spec, "send")
+        Sponge.getCommandManager().register(this, Commands(logger, config).send, "send")
     }
-}
-
-@ConfigSerializable
-class SendarooConfig {
-    @Setting
-    val debug: Boolean = false
-
-    @Setting
-    val transactionLogging: Boolean = false
 }
