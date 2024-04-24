@@ -8,13 +8,15 @@ import org.spongepowered.api.command.spec.CommandSpec
 import org.spongepowered.api.data.type.HandTypes
 import org.spongepowered.api.entity.living.player.Player
 import org.spongepowered.api.item.ItemTypes
+import org.spongepowered.api.item.inventory.ItemStack
+import org.spongepowered.api.item.inventory.ItemStackSnapshot
 import org.spongepowered.api.item.inventory.transaction.InventoryTransactionResult
 import org.spongepowered.api.text.LiteralText
 import org.spongepowered.api.text.Text
 import org.spongepowered.api.text.format.TextColors
 import java.util.*
 
-class Commands(private val logger: Logger, config: SendarooConfig) {
+class Commands(private val logger: Logger, private val config: SendarooConfig) {
 
     private fun err(msg: String): Text {
         return Text.builder()
@@ -68,6 +70,7 @@ class Commands(private val logger: Logger, config: SendarooConfig) {
 
             // Check players item in their hand
             val item = src.getItemInHand(HandTypes.MAIN_HAND).getOrNull()?.createSnapshot()
+
             // Player has no item in their hand
             if (item == null || item.isEmpty || item == ItemTypes.AIR) {
                 src.sendMessage(err("You must have an item in your hand to send something!"))
@@ -81,23 +84,18 @@ class Commands(private val logger: Logger, config: SendarooConfig) {
                 return@executor CommandResult.empty()
             }
 
+            logTransaction(src, target, item, amt)
+
             when {
                 item.quantity == amt || item.quantity > amt -> {
-                    val stack = item.copy().createStack()
-                    stack.quantity = amt
-
-                    val result = target.inventory.offer(stack)
+                    val result = target.inventory.offer(item.eq(amt))
 
                     if (result.type != InventoryTransactionResult.Type.SUCCESS) {
-                        // Potentially something else could've gone wrong but this is lazy
                         src.sendMessage(err("Target players inventory is too full!"))
                         return@executor CommandResult.empty()
                     }
 
-                    val ustack = item.copy().createStack()
-                    ustack.quantity -= amt
-
-                    src.setItemInHand(HandTypes.MAIN_HAND, ustack)
+                    src.setItemInHand(HandTypes.MAIN_HAND, item.minus(amt))
                     notifyPlayers(src, target, item.type.name, amt)
                 }
 
@@ -105,10 +103,7 @@ class Commands(private val logger: Logger, config: SendarooConfig) {
                     src.sendMessage(err("Not enough items! Try again with the correct amount!"))
                     return@executor CommandResult.empty()
                 }
-
             }
-
-
             CommandResult.success()
         }.build()
 
@@ -118,6 +113,24 @@ class Commands(private val logger: Logger, config: SendarooConfig) {
         p1.sendMessage(sentItem)
         p2.sendMessage(receivedItem)
     }
+
+    private fun logTransaction(src: Player, target: Player, item: ItemStackSnapshot, amount: Int) {
+        if (!config.transactionLogging) return
+        logger.info("${src.name} --[${item.type.name}]x$amount-> ${target.name}")
+    }
+}
+
+
+fun ItemStackSnapshot.minus(amount: Int): ItemStack {
+    val stack = this.copy().createStack()
+    stack.quantity -= amount
+    return stack
+}
+
+fun ItemStackSnapshot.eq(amount: Int): ItemStack {
+    val stack = this.copy().createStack()
+    stack.quantity = amount
+    return stack
 }
 
 fun <T> Optional<T?>.getOrNull(): T? {

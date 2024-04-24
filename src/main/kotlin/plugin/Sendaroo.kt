@@ -50,4 +50,7 @@ class Sendaroo @Inject constructor(
 class SendarooConfig {
     @Setting
     val debug: Boolean = false
+
+    @Setting
+    val transactionLogging: Boolean = false
 }
