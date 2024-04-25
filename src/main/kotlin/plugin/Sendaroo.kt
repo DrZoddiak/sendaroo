@@ -11,17 +11,15 @@ import org.spongepowered.api.event.game.state.GameConstructionEvent
 import org.spongepowered.api.event.game.state.GamePreInitializationEvent
 import org.spongepowered.api.plugin.Dependency
 import org.spongepowered.api.plugin.Plugin
-import org.spongepowered.api.plugin.PluginContainer
 
 @Plugin(
     id = "sendaroo",
     name = "sendaroo",
-    version = "1.3-SNAPSHOT",
+    version = "1.5",
     description = "Allows users to send items to other users!",
     dependencies = [Dependency(id = "spotlin", version = "0.2.0", optional = false)]
 )
 class Sendaroo @Inject constructor(
-    private val container: PluginContainer,
     private val logger: Logger,
     @DefaultConfig(sharedRoot = false)
     private val loader: ConfigurationLoader<CommentedConfigurationNode>
@@ -33,7 +31,9 @@ class Sendaroo @Inject constructor(
         logger.info("initializing config...")
         val ref = loader.loadToReference().referenceTo(SendarooConfig::class.java)
         config = ref.get() ?: SendarooConfig()
-        ref.setAndSave(config)
+        ref.setAndSave(config).let {
+            if (!it) logger.error("Failed to serialize config!")
+        }
     }
 
     @Listener

@@ -33,15 +33,20 @@ class Commands(private val logger: Logger, private val config: SendarooConfig) {
             .build()
     }
 
-    private val argName: LiteralText = Text.of("name")
-    private val argQuantity: LiteralText = Text.of("quantity")
-    private val quantityArg: CommandElement =
-        GenericArguments.optional(GenericArguments.onlyOne(GenericArguments.integer(argQuantity)))
-    private val nameArg: CommandElement = GenericArguments.onlyOne(GenericArguments.player(argName))
+    // Command arguments
+    private val nameKey: LiteralText = Text.of("name")
+    private val quantityKey: LiteralText = Text.of("quantity")
 
+    // Command elements
+    private val quantityArg: CommandElement =
+        GenericArguments.optional(GenericArguments.onlyOne(GenericArguments.integer(quantityKey)))
+    private val nameArg: CommandElement = GenericArguments.onlyOne(GenericArguments.player(nameKey))
+
+    // The command to register
     val send: CommandSpec = CommandSpec.builder()
         .description(Text.of("Sends an item to another user!"))
         .arguments(nameArg, quantityArg)
+        .permission("sendaroo.send.base")
         .executor { src, args ->
             // Ensure sender is a player
             if (src !is Player) {
@@ -49,20 +54,20 @@ class Commands(private val logger: Logger, private val config: SendarooConfig) {
                 return@executor CommandResult.empty()
             }
 
-            // Target player being given an item
-            if (!args.hasAny(argName)) {
-                src.sendMessage(err("Who do you want to send it to?"))
-                return@executor CommandResult.empty()
-            }
-            val target = args.getOne<Player>(argName).getOrNull()
-
-            if (target == null) {
-                src.sendMessage(err("You must use a valid player name!"))
-                return@executor CommandResult.empty()
+            // The target player to send items to
+            val target: Player = args.getOne<Player>(nameKey).getOrNull().let {
+                if (it == null) {
+                    src.sendMessage(err("You must use a valid player name!"))
+                    return@executor CommandResult.empty()
+                }
+                it
             }
 
             if (!config.debug || !src.hasPermission("sendaroo.send.self")) {
                 // Prevent from sending items to self
+                // The code doesn't make special consideration for this case
+                // If you send items to yourself there is a chance of deleting items
+                // under certain conditions.
                 if (src == target) {
                     src.sendMessage(err("You cannot send items to yourself!"))
                     return@executor CommandResult.empty()
@@ -70,31 +75,35 @@ class Commands(private val logger: Logger, private val config: SendarooConfig) {
             }
 
             // Check players item in their hand
-            val item = src.mainHand()
-
-            // Player has no item in their hand
-            if (item.isNothing()) {
-                src.sendMessage(err("You must have an item in your hand to send something!"))
-                return@executor CommandResult.empty()
-            }
-            // #isNothing is a null check
-            item!!
-
-            val amt = argQuantity.getOneOrDefault(args) { item.quantity }
-
-            if (amt < 1) {
-                src.sendMessage(err("You must send a positive amount of items!"))
-                return@executor CommandResult.empty()
+            val item: ItemStackSnapshot = src.mainHand().let {
+                if (it.isNothing()) {
+                    src.sendMessage(err("You must have an item in your hand to send something!"))
+                    return@executor CommandResult.empty()
+                }
+                // #isNothing is a null check
+                it!!
             }
 
+            // The amount to send, this is either the whole stack
+            // or the arg from the command if provided.
+            val amt = quantityKey.getOneOrDefault(args) { item.quantity }.let {
+                if (it < 1) {
+                    src.sendMessage(err("You must send a positive amount of items!"))
+                    return@executor CommandResult.empty()
+                }
+                it
+            }
+
+            // This logs the transaction from the command
             logTransaction(src, target, item, amt)
 
-            when {
+            return@executor when {
                 item.quantity >= amt -> {
-                    target.inventory.offer(item.eq(amt)).isSuccessful {
+                    target.inventory.offer(item.eq(amt)).isSuccessful({
                         src.setItemInHand(HandTypes.MAIN_HAND, item.minus(amt))
                         notifyPlayers(src, target, item.type.name, amt)
-                    }.orElse {
+                        CommandResult.success()
+                    }) {
                         src.sendMessage(err("Target players inventory is too full!"))
                         CommandResult.empty()
                     }
@@ -102,30 +111,37 @@ class Commands(private val logger: Logger, private val config: SendarooConfig) {
 
                 else -> {
                     src.sendMessage(err("Not enough items! Try again with the correct amount!"))
-                    return@executor CommandResult.empty()
+                    CommandResult.empty()
                 }
             }
-            CommandResult.success()
+
         }.build()
 
     private fun <T> LiteralText.getOneOrDefault(args: CommandContext, default: () -> T): T {
         return args.getOne<T>(this).getOrNull() ?: default()
     }
 
-    private fun Boolean.orElse(action: () -> CommandResult) {
-        if (!this) {
-            action()
-        }
-    }
-
-    private fun InventoryTransactionResult.isSuccessful(action: () -> Unit): Boolean {
+    private fun InventoryTransactionResult.isSuccessful(
+        succ: () -> CommandResult,
+        err: () -> CommandResult
+    ): CommandResult {
         return when (this.type) {
             InventoryTransactionResult.Type.SUCCESS -> {
-                action()
-                true
+                succ()
             }
+
+            InventoryTransactionResult.Type.CANCELLED -> {
+                logger.info("Another plugin or mod cancelled this transaction!")
+                err()
+            }
+
+            InventoryTransactionResult.Type.FAILURE -> {
+                err()
+            }
+
             else -> {
-                false
+                logger.info("Some unexpected error has occurred during this transaction!")
+                err()
             }
         }
     }
