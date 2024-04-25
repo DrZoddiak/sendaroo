@@ -63,7 +63,7 @@ class Commands(private val logger: Logger, private val config: SendarooConfig) {
                 it
             }
 
-            if (!config.debug || !src.hasPermission("sendaroo.send.self")) {
+            if (!config.debug || !src.hasPermission("sendaroo.debug.send.self")) {
                 // Prevent from sending items to self
                 // The code doesn't make special consideration for this case
                 // If you send items to yourself there is a chance of deleting items
